@@ -1,0 +1,21 @@
+{
+    "chooseGames": [
+        "R6: Siege",
+        "Lethal Company",
+        "Content Warning",
+        "CS2",
+        "Minecraft"
+    ],
+    "lore": {
+        "noranixi": [
+            "is trans"
+        ]
+    },
+    "responses": {
+        "chat": [
+            "chat is this real?",
+            "chat.",
+            "hi chatroom"
+        ]
+    }
+}
