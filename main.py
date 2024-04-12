@@ -30,7 +30,9 @@ async def on_message(message):
 
     # if someone sends 20-30 consecutive messages, or a
     # >1000 character message, respond "yapper alert!"    
-    
+
+    if len(message.content) > 256:
+        await message.channel.send("yapper alert!")
     if 'ban' in message.content.lower():
         await message.channel.send("mods, ban him")    
     if 'chat' in message.content.lower():
