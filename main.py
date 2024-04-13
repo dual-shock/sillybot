@@ -3,7 +3,9 @@ from discord.ext import commands
 import logging
 import json
 import random
+from responses import responses
 from utils import get_env_var
+
 
 BOT_TOKEN = get_env_var("bot-token.env", "DISCORD_TOKEN")
 
@@ -18,27 +20,38 @@ with open("data.json","r") as data_file:
     data = json.load(data_file)
     print(data)
 
+async def check_message(message):
+    for response in responses:
+        for input_string in response.inputs:
+            if response.anySubstring and input_string.lower() in message.content.lower():
+                if len(response.responses) > 1:
+                    await message.channel.send(random.choice(response.responses))
+                else:
+                    await message.channel.send(response.reponses[0])
+                return
+            elif response.startsWith and message.content.lower().startswith(input_string.lower()):
+                if len(response.responses) > 1:
+                    await message.channel.send(random.choice(response.responses))
+                else:
+                    await message.channel.send(response.reponses[0])
+                return
+    return
+
+
 @bot.event
 async def on_ready():
     print(f'Bot activated as {bot.user}')
 
 @bot.event
 async def on_message(message):
-
     if message.author == bot.user:
         return
 
-    # if someone sends 20-30 consecutive messages, or a
-    # >1000 character message, respond "yapper alert!"    
+    await check_message(message) 
 
     if len(message.content) > 256:
         await message.channel.send("yapper alert!")
-    if 'ban' in message.content.lower():
-        await message.channel.send("mods, ban him")    
-    if 'chat' in message.content.lower():
-        await message.channel.send(random.choice(data['responses']['chat']))
-    if message.content.lower() in ['itsyou','its you', "it's you","it'syou"]:
-        await message.channel.send("Despite everything, it's still you.")
+
     await bot.process_commands(message)
 
 @bot.command(aliases=['pick'])
@@ -66,10 +79,7 @@ async def _remove_game(ctx, word1, *args):
         data["chooseGames"].remove(arguments)
         with open("data.json","r+") as data_file:
             json.dump(data, data_file, indent=4)
-        if True:
             await ctx.send(f'silly removed {arguments} from the list of games!')
-        else:
-            await ctx.send(f'silly failed to remove {arguments} from the list of games! did you spell it correctly?')
     else:
         return
     
