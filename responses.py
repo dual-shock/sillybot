@@ -12,13 +12,13 @@ class Response:
 
 responses = [
     Response(
-        inputs=["chat"],
+        inputs=["shat"],
         anySubstring=True,
         startsWith=False,
         responses=[
-            "chat is this real?",
-            "chat.",
-            "hi chatroom"
+            "shat is this real?",
+            "shat.",
+            "hi shatroom"
         ]
     ),
     Response(
@@ -36,7 +36,7 @@ responses = [
         anySubstring=True,
         startsWith=False,
         responses=[
-            "chat. ban.",
+            "shat. ban.",
             "no ban.",
             "is this even bannable?"
         ]
@@ -61,6 +61,17 @@ responses = [
             "https://tenor.com/view/dancing-annoying-dog-deltarune-undertale-gif-23127679",
             "https://tenor.com/view/temmie-undertale-deltarune-text-box-gif-22453093",
             "https://tenor.com/view/frisk-undertale-gif-8147392428286254944"
+        ]
+    ),
+    Response(
+        inputs=["temmy", "temmie", "temy", "temie", "temi", "tem"],
+        anySubstring=True,
+        startsWith=False,
+        responses=[
+            "https://tenor.com/view/temmie-gif-19040913",
+            "https://tenor.com/view/temmie-undertale-lick-icon-temmie-lick-deviantart-lick-gif-13689909709087974356",
+            "https://tenor.com/view/temmie-tem-nyan-tem-nyan-temmie-gif-22559985",
+            "https://tenor.com/view/t-emmie-gif-5723836"
         ]
     ),
 
