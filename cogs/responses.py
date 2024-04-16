@@ -22,6 +22,16 @@ responses = [
         ]
     ),
     Response(
+        inputs=["chat"],
+        anySubstring=True,
+        startsWith=False,
+        responses=[
+            "chat is this real?",
+            "chat.",
+            "hi chatroom"
+        ]
+    ),
+    Response(
         inputs=['itsyou','its you', "it's you","it'syou"],
         anySubstring=True,
         startsWith=False,

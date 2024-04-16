@@ -12,8 +12,8 @@
         "mariokart",
         "gmod"
     ],
-    "leaderboard":{
-        "wordle":[
+    "leaderboard": {
+        "wordle": [
             {
                 "username": "noranixi",
                 "total_score": 100
@@ -21,9 +21,9 @@
             {
                 "username": "noranixi",
                 "total_score": 100
-            } 
+            }
         ],
-        "connections":[
+        "connections": [
             {
                 "username": "noranixi",
                 "score": 100
@@ -31,48 +31,48 @@
             {
                 "username": "noranixi",
                 "score": 100
-            } 
+            }
         ]
     },
-    "userdata":{
-        "noranixi":{},
-        "skyestehlimit":{
+    "userdata": {
+        "noranixi": {},
+        "skyestehlimit": {
             "wordles": {
-                "1026":{
-                    "number":1026,
-                    "score":3
+                "1026": {
+                    "number": 1026,
+                    "score": 3
                 },
-                "1028":{
-                    "number":1028,
-                    "score":5
+                "1028": {
+                    "number": 1028,
+                    "score": 5
                 },
-                "1029":{
-                    "number":1029,
-                    "score":3
+                "1029": {
+                    "number": 1029,
+                    "score": 3
                 },
-                "1030":{
-                    "number":1030,
-                    "score":4
+                "1030": {
+                    "number": 1030,
+                    "score": 4
                 }
             },
-            "total_wordle_score":15
+            "total_wordle_score": 15
         },
-        "africansalvationunite":{
+        "africansalvationunite": {
             "wordles": {
-                "1026":{
-                    "number":1026,
-                    "score":3
+                "1026": {
+                    "number": 1026,
+                    "score": 3
                 },
-                "1028":{
-                    "number":1028,
-                    "score":4
+                "1028": {
+                    "number": 1028,
+                    "score": 4
                 },
-                "1029":{
-                    "number":1029,
-                    "score":3
+                "1029": {
+                    "number": 1029,
+                    "score": 3
                 }
             },
-            "total_wordle_score":10
+            "total_wordle_score": 10
         }
     }
 }
