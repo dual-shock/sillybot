@@ -1,13 +1,13 @@
 import discord
 from discord.ext import commands 
-import logging
-import json
-import random
 import dotenv
 import os
+from pathlib import Path
 
-dotenv.load_dotenv("bot-token.env")
+
+dotenv.load_dotenv(Path(__file__).with_name("bot-token.env"))
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
+print(BOT_TOKEN)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -26,7 +26,7 @@ class Silly(commands.Bot):
 
     async def load_cogs(self):
         print('\nLoading extention cogs!')
-        for filename in os.listdir("./cogs"):
+        for filename in os.listdir(Path(__file__).parent / "./cogs"):
             if filename[:-3] in self.cogs_list:
                 print(f'- Loading cogs.{filename[:-3]}')
                 await self.load_extension(f"cogs.{filename[:-3]}")
@@ -34,7 +34,7 @@ class Silly(commands.Bot):
 
     async def reload_cogs(self):
         print('\nReloading extension cogs!')
-        for filename in os.listdir("./cogs"):
+        for filename in os.listdir(Path(__file__).parent / "./cogs"):
             if filename[:-3] in self.cogs_list:
                 print(f"- Reloading cogs.{filename[:-3]}!")
                 await self.reload_extension(f"cogs.{filename[:-3]}")
