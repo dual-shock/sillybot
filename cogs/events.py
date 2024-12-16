@@ -76,7 +76,7 @@ class EventsCog(commands.Cog):
         # ? Boob getting told to lock in every 100th ish msg
         if message.author.name == "balogna":
             if random.randint(1, 25) == 1:
-                await message.channel.send(f"time to lock in @{message.author.mention}")
+                await message.channel.send(f"time to lock in {message.author.mention}")
 
     # doing something when the cog gets loaded
     async def cog_load(self):
