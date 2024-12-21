@@ -1,4 +1,7 @@
 import asyncio
+import json
+from pathlib import Path
+from typing import Union
 from interactions import (
     Extension, 
     slash_command, 
@@ -6,7 +9,18 @@ from interactions import (
     listen,
     OptionType, 
     slash_option,
-    Member,ActionRow, Button, ButtonStyle, )
+    Member,
+    User,
+    ActionRow, 
+    Button, 
+    ButtonStyle, 
+    is_owner, 
+    check,
+    user_context_menu,
+    ContextMenuContext,
+    Message
+)
+
 from interactions.api.events.discord import (
     VoiceStateUpdate,
     VoiceUserJoin,
@@ -15,65 +29,121 @@ from interactions.api.events.discord import (
 from interactions.api.events import Component
 
 
-
-
-
+#TODO let the sender cancel their request
+#TODO When it times out, let it be marked as seen
+#TODO make help thing
+#!! My old theme is neon night
 
 
 class vcReq(Extension):
+
+    #*INIT
     def __init__(self, client):
-        self.client = client
+        self.Silly = client
         asyncio.create_task(self.async_init())
-        self.dev_channel = self.client.get_channel(1318190826458714214)
         self.paintcordID = 1231133344822202468
-        self.paints_joinlog = self.client.get_channel(1319056168257060894)
-        self.paints_nomic = self.client.get_channel(1279254041662197820)
+        self.dev_channel = self.Silly.get_channel(1318190826458714214)
+        self.paints_joinlog = self.Silly.get_channel(1319056168257060894)
+        self.paints_vcbots = self.Silly.get_channel(1231136406026584084)
+        self.secret_dungeon = self.Silly.get_channel(1277714626959642721)
     def drop(self):
         asyncio.create_task(self.async_drop())
         super().drop()
-    async def async_init(self):
-        print(f"- {self.__class__.__name__} loaded!")    
-    async def async_drop(self):
-        print(f"- {self.__class__.__name__} unloaded!")
-        pass
+    async def async_init(self): print(f"- {self.__class__.__name__} loaded!")    
+    async def async_drop(self): print(f"- {self.__class__.__name__} unloaded!")
 
 
+    #*LISTENERS
     @listen(VoiceUserJoin)
     async def on_voice_user_join(self, event: VoiceUserJoin):
-        if event.author.guild.id == self.paintcordID:
+        if event.author.guild.id == self.paintcordID and event.channel.id != self.secret_dungeon.id:
             await self.paints_joinlog.send(f"{event.author.display_name} joined {event.channel.name}")
-        return event
     
     @listen(VoiceUserMove)
     async def on_voice_user_move(self, event: VoiceUserMove):
-        if event.author.guild.id == self.paintcordID:
+        if event.author.guild.id == self.paintcordID and event.new_channel.id != 1277714626959642721:
             await self.paints_joinlog.send(f"{event.author.display_name} joined {event.new_channel.name}")
-        return event
 
     @listen(VoiceStateUpdate)
-    async def on_voice_state_update(self, event: VoiceStateUpdate):
-        print(event.before, event.after)
-        if event.before is not None: 
-            channel_left = event.before.channel.name
-            member_left = event.before.member.mention
-            #await self.dev_channel.send(f"GLOBAL VoiceState update, {member_left} left {channel_left}")
-        if event.after is not None: 
-            channel_joined = event.after.channel.name
-            member_joined = event.after.member.display_name
-            #await self.dev_channel.send(f"GLOBAL VoiceState update, {member_left} joined {channel_left}")
-            #if event.after.member.guild.id == self.paintcordID:
-            #    if event.after.channel is not None:
-            #        if event.after.self_deaf is False and event.after.self_mute is False:
-            #            if event.after.mute is False and event.after.deaf is False:
-            #                if event.after.self_stream is False and event.after.self_video is False:
-                                
-                    #await self.paints_joinlog.send(f"{member_joined} joined {channel_joined}")
-        return event
-    
+    async def on_voice_state_update(self, event: VoiceStateUpdate): return event
+
+
+    #*METHODS
+    async def create_request_interaction(self, ctx: Union[SlashContext, ContextMenuContext], sender: Union[Member, User], recipient: Union[Member, User], mention_sender: bool=False):
+        if recipient.voice is not None:
+            recipient_vc = recipient.voice.channel
+            req_recipient_actrow = ActionRow(
+                Button(
+                    style=ButtonStyle.GREEN,
+                    label="Accept request",),
+                Button(
+                    style=ButtonStyle.RED,
+                    label="Decline request",))
+            components: list[ActionRow] = [req_recipient_actrow]
+            if mention_sender: req_recipient_message = await self.paints_vcbots.send(f"{sender.display_name} is requesting {recipient.mention} to join {recipient_vc.name}", components=components)
+            else: req_recipient_message = await self.paints_vcbots.send(f"{sender.display_name} is requesting {recipient.mention} to join {recipient_vc.name}", components=components)
             
+            async def check_accepter(component: Component) -> bool:
+                if component.ctx.user.id == recipient.id: return True
+                else:
+                    await component.ctx.send(f"Sorry, you're not the recipient of this request. {recipient.display_name} is.", ephemeral=True)
+                    return False 
+                
+            try: used_component: Component = await self.Silly.wait_for_component(components = req_recipient_actrow,check=check_accepter, timeout = 60*5)
+            except: await req_recipient_message.edit(components=[], content="This request has timed out")
+            else: 
+                if used_component.ctx.component.label == "Accept request":
+                    if sender.voice is not None: #if sender is in a vc
+                        await sender.move(recipient_vc.id)
+                        await req_recipient_message.edit(components=[], content=f"The request has been accepted. Moving {sender.display_name} to {recipient_vc.name}.")
+                    else: #if sender is not in a 
+                        async def check_vc_joiner():
+                            if sender.voice is not None: return True
+                            else: return False
+                        await req_recipient_message.edit(components=[], content=f"The request has been accepted. Waiting for 5 minutes to see if {sender.display_name} joins any vc.")
+                        try: 
+                            await self.Silly.wait_for("on_voice_state_update", timeout=60*5, checks=check_vc_joiner)
+                            await sender.move(recipient_vc.id)
+                        except TimeoutError:  
+                            await req_recipient_message.edit(components=[], content=f"{sender.display_name} did not join a vc in time")
+                else: #if used_component.ctx.component.label == "Decline request":
+                    await ctx.send("You quietly declined the request, the declined user will not be notified.", ephemeral=True)
+                    await req_recipient_message.delete()
+        else: 
+            if mention_sender: await ctx.send(f"{sender.mention} the person you're trying to request is not in a voice channel", ephemeral=True) 
+            else: await ctx.send("The person you're trying to request is not in a voice channel", ephemeral=True) 
+
+
+    async def create_invite_interaction(self, ctx: Union[SlashContext, ContextMenuContext], sender: Union[Member, User], recipient: Union[Member, User], mention_sender: bool=False):
+        return
+        if sender.voice is not None: 
+            print("sender of invite voice is not none")
+
+            sender_vc = sender.voice.channel
+
+            inv_recipient_actrow = ActionRow(
+                Button(
+                    style=ButtonStyle.GREEN,
+                    label="Accept invite",),
+                Button(
+                    style=ButtonStyle.RED,
+                    label="Decline invite",))
+            components: list[ActionRow] = [inv_recipient_actrow]
+            
+
+            
+            return
+        
+        else:
+            return
+
+
+
+    #*COMMANDS
+    #? command #1: '/request_to_join <user>'            
     @slash_command(
-        name="req", 
-        description="request to join someones vc or request for someone to join your vc"
+        name="request_to_join", 
+        description="request to join someones vc"
     )
     @slash_option(
         name="user", 
@@ -81,67 +151,94 @@ class vcReq(Extension):
         required=True,
         opt_type=OptionType.USER
     )
-    async def req(self, ctx: SlashContext, user: Member):
-        SENDER = ctx.author
-        RECIPIENT = user
-        # if recipient of the request is in a voice channel
-        if RECIPIENT.voice is not None:
-            SENDER_REQUESTED_VC = RECIPIENT.voice.channel
+    async def request_to_join(self, ctx: SlashContext, user: Member):
+        sender: Member = ctx.author
+        recipient: Member = user
+        await self.create_request_interaction(ctx=ctx, sender=sender, recipient=recipient)
 
-            req_recipient_actrow = ActionRow(
-                Button(
-                    style=ButtonStyle.GREEN,
-                    label="Accept request",
-                ),
-                Button(
-                    style=ButtonStyle.RED,
-                    label="Deny request",
-                )
-            )
-            components: list[ActionRow] = [req_recipient_actrow]
-            # request RECIPIENT if they allow author to join, valid for 5 minutes, see used_component
-            
-            req_recipient_message = await ctx.send(f"{SENDER.mention} is requesting {RECIPIENT.mention} to join {SENDER_REQUESTED_VC.name}", components=components, ephemeral=False)
-            
-            # persisent check to make sure only recipient can answer the request, and create an invite
-            async def check(component: Component) -> bool:
-                if component.ctx.user.id == RECIPIENT.id: 
-                    #await self.dev_channel.send("the component interactor and request recipient are the same")
-                    return True
-                else:
-                    #await self.dev_channel.send("the component interactor and request recipient are NOT the same")
-                    await component.ctx.send(f"Sorry, you're not the recipient of this request. {component.ctx.user} is.", ephemeral=True)
-                    return False 
-                
-            try: used_component: Component = await self.client.wait_for_component(components = req_recipient_actrow,check=check, timeout = 60*5)
-            except: await req_recipient_message.edit(components=[], content="This request has timed out")
-            else: 
-                if used_component.ctx.component.label == "Accept request":
-                    #await self.dev_channel.send("the request to join was ACCEPTED by the RECIPIENT")
-                    if SENDER.voice is not None: #if SENDER is in a vc
-                        #await self.dev_channel.send("the REQUESTOR is in a vc, and is getting moved")
-                        await SENDER.move(SENDER_REQUESTED_VC.id)
-                        await req_recipient_message.edit(components=[], content=f"The request has been accepted. Moving the requestor to the recipients channel.")
-                    else: #if SENDER is not in a vc
-                        await req_recipient_message.edit(components=[], content=f"The request has been accepted. Waiting for 5 minutes to see if the requestor joins.")
-                        #await self.dev_channel.send("the REQUESTOR is NOT in a vc, and is NOT getting moved")
-                        #await self.dev_channel.send("waiting for 5 minutes to see if they join a vc")
-                        try: 
-                            await self.client.wait_for("on_voice_state_update", timeout=60*5)
-                           #await self.dev_channel.send("voice state event detected by waiter")
-                            await SENDER.move(SENDER_REQUESTED_VC.id)
-                        except TimeoutError:  
-                            await req_recipient_message.edit(components=[], content="The requestor did not join a vc in time")
-                            #await self.dev_channel.send("the REQUESTOR did not join a vc in time")
-                else: #used_component.ctx.component.label == "Deny request":
-                    #await self.dev_channel.send("the request to join was DENIED by the RECIPIENT")
-                    await ctx.send("You quietly denied the request, the denied user will not be notified.", ephemeral=True)
-                    await req_recipient_message.delete()
-                    
+    @user_context_menu(name="Request to join VC")
+    async def request_to_join_userctx(self, ctx: ContextMenuContext):
+        recipient: Member = ctx.target
+        sender: Member = ctx.author
+        await self.create_request_interaction(ctx=ctx, sender=sender, recipient=recipient, mention_sender=True)
 
-        else: # if recipient of the request is not in a voice channel
-            await ctx.send("The person you're trying to request is not in a voice channel", ephemeral=True) 
-        
+
+
+    #? command #2: '/invite
+    @slash_command(
+        name="invite_to_vc",
+        description="invite a member to join your vc"
+    )
+    @slash_option(
+        name="user",
+        description="the member you're inviting to your vc",
+        required=True,
+        opt_type=OptionType.USER
+    )
+    async def invite_to_vc(self, ctx: SlashContext, user: Member):
+        sender: Member = ctx.author
+        recipient: Member = user
+        await self.create_invite_interaction(ctx=ctx,sender=sender,recipient=recipient)
+
+
+    @user_context_menu(name="Invite to my VC")
+    async def invite_to_vc_userctx(self, ctx: ContextMenuContext):
+        recipient: Member = ctx.target
+        sender: Member = ctx.author        
+        await self.create_invite_interaction(ctx=ctx,sender=sender, recipient=recipient, mention_sender=True)
+
+
+    #? command #3: '/scrape_catches'
+    @slash_command(
+        name="scrape_catches",
+        description="get all the fish catches :D (from #bots)",
+    )
+    @check(is_owner())
+    async def scrape_catches(self, ctx: SlashContext):
+        with open(Path(__file__).with_name("newinv.json"), "w") as fp:
+            count = 0
+            newinv_data = {}
+            bots_channel = self.Silly.get_channel(1314772261491838996)
+            fish_bot_id = 1315082631225806879
+            async for message in bots_channel.history(limit=None):
+                if message.author.id == fish_bot_id and message.embeds is not None:
+                    if len(message.embeds) != 0:
+                        if message.embeds[0].description != None:
+                            if "You caught" in  message.embeds[0].description:
+                                count+=1
+                                catch_user = str(message.interaction_metadata.user.id)
+
+                                fish_name = message.embeds[0].description[17:][:-3]
+
+                                #given all fish are between 10 and 600, there will always be
+                                #an INT-INT-SPACE, never a letter, so just stripping the space
+                                #returns the size, saves computing by not iterating is_digit()
+                                #on the string
+                                size_number = message.embeds[0].fields[0].value[:3]
+                                #edge  where the fish is only 5cm (only one less than 10)
+                                if size_number == "5 c":
+                                    size_number = "5 "
+
+                                size_number = size_number.strip()
+                                size_number = int(size_number)
+                                
+                                try:
+                                    newinv_data[catch_user]["inventory"].append({
+                                        "name":fish_name,
+                                        "size":size_number
+                                        })  
+                                except KeyError:
+                                    newinv_data[catch_user] = {"inventory":[
+                                        {"name":fish_name,
+                                        "size":size_number }
+                                    ]}
+                                if count == 161: #there was 161 catches in the bots channel
+                                    #from searching in disc, breaks to not scrape whole channel
+                                    break
+            print("FINAL COUNT", count)
+            json.dump(newinv_data, fp,indent=4)
+        await ctx.send("scraped some catches", ephemeral=True)
+    
 
 
 def setup(client):

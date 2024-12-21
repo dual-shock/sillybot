@@ -1,7 +1,6 @@
 import dotenv
 import os
 from pathlib import Path
-
 from interactions import (
     Client, 
     listen, 
@@ -9,7 +8,8 @@ from interactions import (
     slash_command,
     SlashContext,
     check,
-    is_owner)
+    is_owner
+)
 
 dotenv.load_dotenv(Path(__file__).with_name("bot-token.env"))
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -55,7 +55,7 @@ async def req_error(ctx: SlashContext, error: Exception):
     pass
     #await ctx.send(error, "\n\nYou're not Silly's owner...")
 
-
+ 
 
 Silly.start(BOT_TOKEN)
-    #log_handler=logging.FileHandler(filename="discord.log", encoding="utf-8", mode="w")
+
