@@ -29,7 +29,7 @@ class Silly(Client):
         #default cogs loaded
         self.cogs_set = {
             'vcReq',
-            'baseCmds',
+            #'baseCmds',
         }
     
     def load_cogs(self):
