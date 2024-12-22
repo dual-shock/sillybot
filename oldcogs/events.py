@@ -2,7 +2,7 @@ from discord.ext import commands
 import random
 import re
 import json 
-import cogs.responses as rs
+#import cogs.responses as rs
 import importlib
 
 wordle_message_regex = re.compile('^Wordle\s\d,\d\d\d\s\d/6$')
