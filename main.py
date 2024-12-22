@@ -15,7 +15,14 @@ dotenv.load_dotenv(Path(__file__).with_name("bot-token.env"))
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 class Silly(Client):
     def __init__(self):
-        super().__init__(intents=Intents.ALL)
+        super().__init__(
+            intents=Intents.ALL,
+            sync_interactions=True,
+            asyncio_debug=True,
+            send_command_tracebacks=True,
+            basic_logging=True,
+            
+        )
         self.cogs_list = [
             #'game_commands',
             #'events'
@@ -36,7 +43,9 @@ class Silly(Client):
                 print(f"- Reloading cogs.{filename[:-3]}!")
                 self.reload_extension(f"cogs.{filename[:-3]}")
 
-Silly = Silly()
+Silly = Silly(
+
+)
 
 @listen()
 async def on_ready():
