@@ -42,7 +42,6 @@ class vcReq(Extension):
         self.Silly = client
         asyncio.create_task(self.async_init())
         self.paintcordID = 1231133344822202468
-        self.dev_channel = self.Silly.get_channel(1318190826458714214)
         self.paints_joinlog = self.Silly.get_channel(1319056168257060894)
         self.paints_vcbots = self.Silly.get_channel(1231136406026584084)
         self.secret_dungeon = self.Silly.get_channel(1277714626959642721)
@@ -56,6 +55,7 @@ class vcReq(Extension):
     #*LISTENERS
     @listen(VoiceUserJoin)
     async def on_voice_user_join(self, event: VoiceUserJoin):
+        await self.Silly.log(f"{event.author.display_name} joined {event.channel.name}")
         if event.author.guild.id == self.paintcordID and event.channel.id != self.secret_dungeon.id:
             await self.paints_joinlog.send(f"{event.author.display_name} joined {event.channel.name}")
     
