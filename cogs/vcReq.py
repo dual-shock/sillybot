@@ -1,5 +1,6 @@
 import asyncio
 import json
+import datetime
 from pathlib import Path
 from typing import Union
 from interactions import (
@@ -18,7 +19,13 @@ from interactions import (
     check,
     user_context_menu,
     ContextMenuContext,
-    Message
+    Message,
+    Embed,
+    EmbedField,
+    EmbedAuthor,
+    EmbedAttachment,
+    AllowedMentions,
+    VoiceState
 )
 
 from interactions.api.events.discord import (
@@ -55,14 +62,13 @@ class vcReq(Extension):
     #*LISTENERS
     @listen(VoiceUserJoin)
     async def on_voice_user_join(self, event: VoiceUserJoin):
-        await self.Silly.log(f"{event.author.display_name} joined {event.channel.name}")
         if event.author.guild.id == self.paintcordID and event.channel.id != self.secret_dungeon.id:
-            await self.paints_joinlog.send(f"{event.author.display_name} joined {event.channel.name}")
+            await self.send_join(event)
     
     @listen(VoiceUserMove)
     async def on_voice_user_move(self, event: VoiceUserMove):
         if event.author.guild.id == self.paintcordID and event.new_channel.id != 1277714626959642721:
-            await self.paints_joinlog.send(f"{event.author.display_name} joined {event.new_channel.name}")
+            await self.send_join(event)
 
     @listen(VoiceStateUpdate)
     async def on_voice_state_update(self, event: VoiceStateUpdate): return event
@@ -70,103 +76,204 @@ class vcReq(Extension):
 
     #*METHODS
     async def create_request_interaction(self, ctx: Union[SlashContext, ContextMenuContext], sender: Union[Member, User], recipient: Union[Member, User], mention_sender: bool=False):
-        if recipient.voice is not None:
-            recipient_vc = recipient.voice.channel
+        sender_str = sender.mention if mention_sender else sender.display_name
+        
+        #! CTX.send == person who STARTED request thread
+        #! USED_COMPONENT.CTX == person who ACCEPTED/DECLINED request
+        #both can be ephemeral, as an answer to interaction
+        
+        if type(recipient.voice) is not VoiceState:
+            await ctx.send(f"hi {sender_str}, the person you're trying to request is not in a voice channel, silly", ephemeral=True) 
+            return
+
+        if type(recipient.voice) is VoiceState: #!if reciever is in a vc 
+            recipients_vc = recipient.voice.channel
             req_recipient_actrow = ActionRow(
                 Button(
+                    custom_id="accept_request",
                     style=ButtonStyle.GREEN,
                     label="Accept request",),
                 Button(
+                    custom_id="decline_request",
                     style=ButtonStyle.RED,
                     label="Decline request",))
             components: list[ActionRow] = [req_recipient_actrow]
 
-            if mention_sender: req_recipient_message = await self.paints_vcbots.send(f"{sender.display_name} is requesting {recipient.mention} to join {recipient_vc.mention}", components=components)
-            else: req_recipient_message = await self.paints_vcbots.send(f"{sender.display_name} is requesting {recipient.mention} to join {recipient_vc.mention}", components=components)
-            req_confirmation = await ctx.send(f"your request has been sent in {self.paints_vcbots.mention}", ephemeral=True)
-            async def check_accepter(component: Component) -> bool:
-                if component.ctx.user.id == recipient.id: return True
+            #!embed
+            req_msg_obj = await self.paints_vcbots.send(f"{sender_str} is requesting {recipient.mention} to join {recipients_vc.mention}", components=components)
+            
+            if ctx.channel.id != self.paints_vcbots.id: await ctx.send(f"your request has been sent in {self.paints_vcbots.mention}", ephemeral=True)
+            else: await ctx.send("your request has been sent", ephemeral=True)
+
+            async def interactor_identity(attempted_comp_interaction: Component) -> bool:
+                if attempted_comp_interaction.ctx.user.id == recipient.id: 
+                    return True
                 else:
-                    await component.ctx.send(f"this request isnt for you, silly. its for {recipient.display_name}.", ephemeral=True)
+                    await attempted_comp_interaction.ctx.send(f"this request isnt for you, silly. its for {recipient.display_name}.", ephemeral=True)
                     return False 
                 
-            try: used_component: Component = await self.Silly.wait_for_component(components = req_recipient_actrow,check=check_accepter, timeout = 60*5)
-            except: await req_recipient_message.edit(components=[], content="this request has timed out, silly")
+            try: 
+                req_comp_interaction: Component = await self.Silly.wait_for_component(
+                    components = req_recipient_actrow, 
+                    check=interactor_identity, 
+                    timeout = 300) #? seconds
+            except TimeoutError:
+                #TODO make a mark seen component 
+                await req_msg_obj.edit(#!embed
+                    components=[], #? None
+                    content="this request has timed out, silly")
             else: 
-                if used_component.ctx.component.label == "Accept request":
-                    if sender.voice is not None: #if sender is in a vc
-                        await sender.move(recipient_vc.id)
-                        await req_recipient_message.edit(components=[], content=f"the request has been accepted. Moving {sender.display_name} to {recipient_vc.mention}.")
-                    else: #if sender is not in a 
-                        async def check_vc_joiner():
-                            if sender.voice is not None: return True
-                            else: return False
-                        await req_recipient_message.edit(components=[], content=f"the request has been accepted. Waiting for 5 minutes to see if {sender.display_name} joins any vc.")
+                if req_comp_interaction.ctx.custom_id == "accept_request":
+                    async def check_vc_joiner(voice_event: VoiceStateUpdate) -> bool:
+                        if voice_event.after is not None: 
+                            if voice_event.after.member.id == sender.id and int(voice_event.after.guild.id) == self.paintcordID:
+                                return True
+                        else: return False
+                    if type(sender.voice) is VoiceState:
+                        if int(sender.voice.guild.id) == self.paintcordID:#!embed
+                            await req_msg_obj.edit(components=[], content=f"the request has been accepted. Moving {sender.display_name} to {recipients_vc.mention}.")
+                            await sender.move(recipients_vc.id)#!embed
+                            await req_msg_obj.edit(components=[], content=f"moved {sender.display_name} to {recipients_vc.mention}.")
+                        elif int(sender.voice.guild.id) is not self.paintcordID:#!embed
+                            await req_msg_obj.edit(components=[], content=f"the request has been accepted. Waiting 5 minutes for {sender.mention} to join any server VC.")
+                            try: 
+                                await self.Silly.wait_for("on_voice_state_update", timeout=300, checks=check_vc_joiner)
+                            except TimeoutError:  #!embed
+                                await req_msg_obj.edit(components=[], content=f"{sender.display_name} did not join a vc in time")
+                            else:#!embed
+                                await req_msg_obj.edit(components=[], content=f"the request has been accepted. Moving {sender.display_name} to {recipients_vc.mention}.")
+                                await sender.move(recipients_vc.id)#!embed
+                                await req_msg_obj.edit(components=[], content=f"moved {sender.display_name} to {recipients_vc.mention}.")
+                    elif type(sender.voice) is not VoiceState:#!embed
+                        await req_msg_obj.edit(components=[], content=f"the request has been accepted. Waiting 5 minutes for {sender.mention} to join any server VC.")
                         try: 
-                            await self.Silly.wait_for("on_voice_state_update", timeout=60*5, checks=check_vc_joiner)
-                            await sender.move(recipient_vc.id)
-                        except TimeoutError:  
-                            await req_recipient_message.edit(components=[], content=f"{sender.display_name} did not join a vc in time")
-                else: #if used_component.ctx.component.label == "Decline request":
-                    await ctx.send("you quietly declined the request, the declined user will not be notified and the request will time out.", ephemeral=True)
-                    await asyncio.sleep(60*4) #TODO this is approx, make variable to track exact
-                    await req_recipient_message.edit(components=[], content="This request has timed out, silly")
-        else: 
-            if mention_sender: await ctx.send(f"{sender.mention} the person you're trying to request is not in a voice channel", ephemeral=True) 
-            else: await ctx.send("the person you're trying to request is not in a voice channel, silly", ephemeral=True) 
-
+                            await self.Silly.wait_for("on_voice_state_update", timeout=300, checks=check_vc_joiner)
+                        except TimeoutError:  #!embed
+                            await req_msg_obj.edit(components=[], content=f"{sender.display_name} did not join a vc in time")
+                        else:#!embed
+                            await req_msg_obj.edit(components=[], content=f"the request has been accepted. moving {sender.display_name} to {recipients_vc.mention}.")
+                            await sender.move(recipients_vc.id)#!embed
+                            await req_msg_obj.edit(components=[], content=f"moved {sender.display_name} to {recipients_vc.mention}.")
+                elif req_comp_interaction.ctx.custom_id == "decline_request":
+                    await req_comp_interaction.ctx.send("you quietly declined the request, the declined user will not be notified and the request will time out.", ephemeral=True)
+                    await asyncio.sleep(240)#!embed
+                    await req_msg_obj.edit(components=[], content="this request has timed out, silly")  
+                else: #! something unexpected happened
+                    pass
 
     async def create_invite_interaction(self, ctx: Union[SlashContext, ContextMenuContext], sender: Union[Member, User], recipient: Union[Member, User], mention_sender: bool=False):
-
-        if sender.voice is not None: 
-            print("sender of invite voice is not none")
-
-            sender_vc = sender.voice.channel
-
+        sender_str = sender.mention if mention_sender else sender.display_name
+        if type(sender.voice) is not VoiceState:
+            await ctx.send("you cant invite someone to your vc when you're not in a vc, silly", ephemeral=True)
+            return
+        
+        if type(sender.voice) is VoiceState:
+            senders_vc = sender.voice.channel
             inv_recipient_actrow = ActionRow(
                 Button(
+                    custom_id="accept_invite",
                     style=ButtonStyle.GREEN,
                     label="Accept invite",),
                 Button(
+                    custom_id="decline_invite",
                     style=ButtonStyle.RED,
                     label="Decline invite",))
             components: list[ActionRow] = [inv_recipient_actrow]
 
-            inv_recipient_message = await self.paints_vcbots.send(f"{recipient.mention}, you've been invited by {sender.display_name} to join {sender_vc.mention}", components=components)
-            inv_confirmation = await ctx.send(f"your invite has been sent to {recipient.mention} in {self.paints_vcbots.mention}", ephemeral=True)
+            inv_msg_obj = await self.paints_vcbots.send(f"{sender_str} has invited {recipient.mention} to join {senders_vc.mention}", components=components)
 
-            async def check_accepter(component: Component) -> bool:
-                if component.ctx.user.id == recipient.id: return True
+            if ctx.channel.id != self.paints_vcbots.id: await ctx.send(f"your invite has been sent in {self.paints_vcbots.mention}", ephemeral=True)
+            else: await ctx.send("your invite has been sent", ephemeral=True)
+
+            async def interactor_identity(attempted_comp_interaction: Component) -> bool:
+                if attempted_comp_interaction.ctx.user.id == recipient.id: 
+                    return True
                 else:
-                    await component.ctx.send(f"this invitation isnt for you, silly. its for {recipient.display_name}.", ephemeral=True)
+                    await attempted_comp_interaction.ctx.send(f"this invite isnt for you, silly. its for {recipient.display_name}.", ephemeral=True)
                     return False
-            
-            try: used_component: Component = await self.Silly.wait_for_component(components = inv_recipient_actrow,check=check_accepter, timeout = 60*5)
-            except: await inv_recipient_message.edit(components=[], content="this invitation has timed out, silly")
+
+            try: 
+                inv_comp_interaction: Component = await self.Silly.wait_for_component(
+                    components = inv_recipient_actrow, 
+                    check=interactor_identity, 
+                    timeout = 300) #? seconds
+            except TimeoutError:
+                #TODO make a mark seen component
+                await inv_msg_obj.edit(
+                    components=[], #? None
+                    content="this invite has timed out, silly")
             else:
-                if used_component.ctx.component.label == "Accept invite":
-                    if recipient.voice is not None: #if recipient is in a vc
-                        await recipient.move(sender_vc.id)
-                        await inv_recipient_message.edit(components=[], content=f"the invitation has been accepted. Moving {recipient.display_name} to {sender_vc.mention}.")
-                    else: #if recipient is not in a vc
-                        async def check_vc_joiner():
-                            if recipient.voice is not None: return True
-                            else: return False
-                        await inv_recipient_message.edit(components=[], content=f"the invitation has been accepted. Waiting for 5 minutes to see if {recipient.display_name} joins any vc.")
-                        try:
-                            await self.Silly.wait_for("on_voice_state_update", timeout=60*5, checks=check_vc_joiner)
-                            await recipient.move(sender_vc.id)
-                        except TimeoutError:
-                            await inv_recipient_message.edit(components=[], content=f"{recipient.display_name} did not join a vc in time")
-                else: #if used_component.ctx.component.label == "Decline invite":
-                    await ctx.send("you quietly declined the invite, the declined user will not be notified and the invite will time out.", ephemeral=True)
-                    await asyncio.sleep(60*4) #TODO this is approx, make variable to track exact
-                    await inv_recipient_message.edit(components=[], content="This invite has timed out, silly")
-        else: # if sender is not in a voice channel
-            await ctx.send("you cant invite someone to your vc when you're not in a vc, silly", ephemeral=True)
-            return
+                if inv_comp_interaction.ctx.custom_id == "accept_invite":
+                    async def check_vc_joiner(voice_event: VoiceStateUpdate) -> bool:
+                        if voice_event.after is not None: 
+                            if voice_event.after.member.id == recipient.id and int(voice_event.after.guild.id) == self.paintcordID:
+                                return True
+                        else: return False
+                
+                    if type(recipient.voice) is VoiceState:
+                        if int(recipient.voice.guild.id) == self.paintcordID:
+                            await inv_msg_obj.edit(components=[], content=f"the invite has been accepted. Moving {recipient.display_name} to {senders_vc.mention}.")
+                            await recipient.move(senders_vc.id)
+                            await inv_msg_obj.edit(components=[], content=f"moved {recipient.display_name} to {senders_vc.mention}.")
+                        elif int(recipient.voice.guild.id) is not self.paintcordID:
+                            await inv_msg_obj.edit(components=[], content=f"the invite has been accepted. Waiting 5 minutes for {recipient.mention} to join any server VC.")
+                            try: 
+                                await self.Silly.wait_for("on_voice_state_update", timeout=300, checks=check_vc_joiner)
+                            except TimeoutError:  
+                                await inv_msg_obj.edit(components=[], content=f"{recipient.display_name} did not join a vc in time")
+                            else:
+                                await inv_msg_obj.edit(components=[], content=f"the invite has been accepted. Moving {recipient.display_name} to {senders_vc.mention}.")
+                                await recipient.move(senders_vc.id)
+                                await inv_msg_obj.edit(components=[], content=f"moved {recipient.display_name} to {senders_vc.mention}.")
+                    elif type(recipient.voice) is not VoiceState:
+                        await inv_msg_obj.edit(components=[], content=f"the invite has been accepted. Waiting 5 minutes for {recipient.mention} to join any server VC.")
+                        try: 
+                            await self.Silly.wait_for("on_voice_state_update", timeout=300, checks=check_vc_joiner)
+                        except TimeoutError:  
+                            await inv_msg_obj.edit(components=[], content=f"{recipient.display_name} did not join a vc in time")
+                        else:
+                            await inv_msg_obj.edit(components=[], content=f"the invite has been accepted. moving {recipient.display_name} to {senders_vc.mention}.")
+                            await recipient.move(senders_vc.id)
+                            await inv_msg_obj.edit(components=[], content=f"moved {recipient.display_name} to {senders_vc.mention}.")
+                elif inv_comp_interaction.ctx.custom_id == "decline_invite":
+                    await inv_comp_interaction.ctx.send("you quietly declined the invite, the declined user will not be notified and the invite will time out.", ephemeral=True)
+                    await asyncio.sleep(240) #TODO this is approx, make variable to track exact
+                    await inv_msg_obj.edit(components=[], content="this invite has timed out, silly")
+                else: #! something unexpected happened
+                    pass
 
 
+    async def send_join(self, event: Union[VoiceUserJoin, VoiceUserMove]):
+        MEMBER: Member = event.author
+        CHANNEL = event.channel if type(event) == VoiceUserJoin else event.new_channel
+
+        embed = Embed(
+            author=EmbedAuthor(
+                name="User join:"
+                #icon_url=MEMBER.avatar.as_url(size=512)
+            ),
+            color=0x00aa00,
+            #title=f"{MEMBER.dis} joined {CHANNEL.mention}",
+            description=f"{MEMBER.mention} joined {CHANNEL.mention}",
+            thumbnail=EmbedAttachment(
+                url=MEMBER.avatar.as_url(
+                    size=48
+                )  ,
+                height=48,
+                width=48
+            ),
+            timestamp=datetime.datetime.now(),
+            # fields=[
+            #     EmbedField(
+            #         name=" ",
+            #         value=f"**{MEMBER.mention}** joined {CHANNEL.mention}",
+            #         inline=True
+            #     )
+            # ]
+            
+        )
+        
+        await self.paints_joinlog.send(embed=embed, allowed_mentions=AllowedMentions.none())
 
     #*COMMANDS
     #? command #1: '/request_to_join <user>'            
@@ -181,14 +288,20 @@ class vcReq(Extension):
         opt_type=OptionType.USER
     )
     async def request_to_join(self, ctx: SlashContext, user: Member):
+        await ctx.defer(ephemeral=True)
+        await self.Silly.log("request_to_join command triggered")
         sender: Member = ctx.author
         recipient: Member = user
+        await self.Silly.log(f"sender: {sender.display_name}, recipient: {recipient.display_name}")
         await self.create_request_interaction(ctx=ctx, sender=sender, recipient=recipient)
 
     @user_context_menu(name="Request to join VC")
     async def request_to_join_userctx(self, ctx: ContextMenuContext):
+        await ctx.defer(ephemeral=True)
+        await self.Silly.log("Request to join VC user command triggered")
         recipient: Member = ctx.target
         sender: Member = ctx.author
+        await self.Silly.log(f"sender: {sender.display_name}, recipient: {recipient.display_name}")
         await self.create_request_interaction(ctx=ctx, sender=sender, recipient=recipient, mention_sender=True)
 
 
@@ -205,6 +318,7 @@ class vcReq(Extension):
         opt_type=OptionType.USER
     )
     async def invite_to_vc(self, ctx: SlashContext, user: Member):
+        await ctx.defer(ephemeral=True)
         sender: Member = ctx.author
         recipient: Member = user
         await self.create_invite_interaction(ctx=ctx,sender=sender,recipient=recipient)
@@ -212,6 +326,7 @@ class vcReq(Extension):
 
     @user_context_menu(name="Invite to my VC")
     async def invite_to_vc_userctx(self, ctx: ContextMenuContext):
+        await ctx.defer(ephemeral=True)
         recipient: Member = ctx.target
         sender: Member = ctx.author        
         await self.create_invite_interaction(ctx=ctx,sender=sender, recipient=recipient, mention_sender=True)

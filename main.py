@@ -15,9 +15,13 @@ from interactions import (
     OptionType,
     SlashCommandChoice
 )
+#c:/Users/nokken/Desktop/repos/sillybot/.venv/Scripts/python.exe -m pip install discord-py-interactions --upgrade
+
+
 
 dotenv.load_dotenv(Path(__file__).with_name("bot-token.env"))
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
+print(BOT_TOKEN)
 class Silly(Client):
     def __init__(self):
         super().__init__(
